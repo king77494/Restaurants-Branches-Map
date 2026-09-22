@@ -194,41 +194,89 @@
         .hide-labels .county-label {
             display: none;
         }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .panel-header h2 {
+            margin-bottom: 0;
+        }
+
+        /* 收合按鈕只在手機上顯示 */
+        .panel-toggle {
+            display: none;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            background: #e0e0e0;
+            cursor: pointer;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 768px) {
+            .panel-toggle {
+                display: block;
+            }
+
+            .info-box.collapsed .panel-body {
+                display: none;
+            }
+
+            .info-box.collapsed .panel-header {
+                margin-bottom: 0;
+            }
+
+            .info-box.collapsed {
+                padding: 10px 15px;
+            }
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
 
-    <div class="info-box">
-        <h2>🍲 六扇門打卡地圖</h2>
-        <div class="sync-state" id="sync-state">連線中…</div>
+    <div class="info-box" id="info-box">
+        <div class="panel-header">
+            <h2>🍲 六扇門打卡地圖</h2>
+            <button class="panel-toggle" id="panel-toggle" onclick="togglePanel()" aria-expanded="true">收合 ▲</button>
+        </div>
 
-        <div class="auth-box">
-            <div id="login-form">
-                <input type="email" id="login-email" placeholder="Email" autocomplete="username">
-                <input type="password" id="login-password" placeholder="密碼" autocomplete="current-password">
-                <button class="auth-btn" onclick="login()">登入</button>
-                <div class="auth-msg" id="auth-msg"></div>
+        <div class="panel-body">
+            <div class="sync-state" id="sync-state">連線中…</div>
+
+            <div class="auth-box">
+                <div id="login-form">
+                    <input type="email" id="login-email" placeholder="Email" autocomplete="username">
+                    <input type="password" id="login-password" placeholder="密碼" autocomplete="current-password">
+                    <button class="auth-btn" onclick="login()">登入</button>
+                    <div class="auth-msg" id="auth-msg"></div>
+                </div>
+                <div id="logged-in" class="auth-status" style="display:none;">
+                    <span id="user-email"></span>
+                    <button onclick="logout()">登出</button>
+                </div>
             </div>
-            <div id="logged-in" class="auth-status" style="display:none;">
-                <span id="user-email"></span>
-                <button onclick="logout()">登出</button>
+            <div class="stats">
+                <div class="stats-number" id="visited-count">0</div>
+                <div>已打卡 / <span id="total-count">103</span> 家</div>
             </div>
-        </div>
-        <div class="stats">
-            <div class="stats-number" id="visited-count">0</div>
-            <div>已打卡 / <span id="total-count">103</span> 家</div>
-        </div>
 
-        <div>
-            <button class="filter-btn active" onclick="filterStores('all', this)">全部</button>
-            <button class="filter-btn" onclick="filterStores('visited', this)">已打卡</button>
-            <button class="filter-btn" onclick="filterStores('unvisited', this)">未打卡</button>
+            <div>
+                <button class="filter-btn active" onclick="filterStores('all', this)">全部</button>
+                <button class="filter-btn" onclick="filterStores('visited', this)">已打卡</button>
+                <button class="filter-btn" onclick="filterStores('unvisited', this)">未打卡</button>
+            </div>
+
+            <div class="store-list" id="store-list"></div>
+
+            <button class="clear-btn" id="clear-btn" onclick="clearAll()" style="display:none;">清空紀錄</button>
         </div>
-
-        <div class="store-list" id="store-list"></div>
-
-        <button class="clear-btn" id="clear-btn" onclick="clearAll()" style="display:none;">清空紀錄</button>
     </div>
 
     <div class="legend">
@@ -242,6 +290,30 @@
         </div>
     </div>
 
+    <script>
+        // 手機版面板收合；狀態記在這台裝置上，下次打開維持一樣
+        function setPanelCollapsed(collapsed) {
+            const box = document.getElementById('info-box');
+            const btn = document.getElementById('panel-toggle');
+            box.classList.toggle('collapsed', collapsed);
+            btn.textContent = collapsed ? '展開 ▼' : '收合 ▲';
+            btn.setAttribute('aria-expanded', String(!collapsed));
+            try { localStorage.setItem('panelCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+        }
+
+        function togglePanel() {
+            setPanelCollapsed(!document.getElementById('info-box').classList.contains('collapsed'));
+        }
+
+        function isMobile() {
+            return window.matchMedia('(max-width: 768px)').matches;
+        }
+
+        try {
+            if (localStorage.getItem('panelCollapsed') === '1') setPanelCollapsed(true);
+        } catch (e) {}
+    </script>
+
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
         import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
@@ -251,7 +323,7 @@
             from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 
         // ===== 把 Firebase 主控台給你的設定貼在這裡 =====
-	        const firebaseConfig = {
+        const firebaseConfig = {
             apiKey: "AIzaSyChFcSijLQEjo70dDF8v16si4q1N5sV-RE",
             authDomain: "restaruantbranchescheckup.firebaseapp.com",
             projectId: "restaruantbranchescheckup",
@@ -374,6 +446,8 @@
                 item.className = `store-item ${isVisited ? 'visited' : 'unvisited'}`;
                 item.innerHTML = `<strong>${store.name}</strong><br>${store.region}`;
                 item.onclick = () => {
+                    // 手機上點選分店後自動收合面板，讓地圖不被擋住
+                    if (isMobile()) setPanelCollapsed(true);
                     map.flyTo([store.lat, store.lon], 13);
                     markers[i].openPopup();
                 };
